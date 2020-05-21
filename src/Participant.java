@@ -13,6 +13,26 @@ public class Participant extends Thread
 		try
 		{
 			Participant participant = new Participant(args);
+
+			// 1. REGISTER WITH COORDINATOR by sending message "JOIN pport" to cport
+			participant.registerWithCoordinator();
+
+			// 2. LISTEN FOR DETAILS of other participants on cport <- message: "DETAILS [ports]"
+			//    add all of the participants to the database
+			participant.listenForDetails();
+
+			// 3. GET VOTE OPTIONS from coordinator on cport <- message: "VOTE_OPTIONS [option]"
+			//	  then decide own vote from options (randomly)
+			participant.listenForVoteOptions();
+
+			// 4. EXECUTE A NUMBER OF ROUNDS by exchanging messages directly with the other participants (TCP)
+			//    first round    <- send vote to all other participants <- message: "VOTE pport vote"
+			//    second onwards <- add any new info received before starting the round to the records
+			//                      send out this new info to each of the participants
+			//                      if the records are complete then continue to next step, otherwise start new round
+			// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
+			// 6. INFORM COORDINATOR of outcome on cport <- "OUTCOME outcome [port]"
+			//    where outcome is the decided winning vote and the list is all the participants who took part
 		}
 		catch(ArgumentQuantityException e)
 		{
@@ -20,6 +40,9 @@ public class Participant extends Thread
 		}
 	}
 
+	/**
+	 * Not enough arguments are given
+	 */
 	static class ArgumentQuantityException extends Exception
 	{
 		String[] args;
@@ -49,22 +72,27 @@ public class Participant extends Thread
 		System.out.println("Running with C: " + this.cport + ", L: " + this.lport + ", P: " + this.pport + ", T: " + this.timeout);
 	}
 
-	// 1. REGISTER WITH COORDINATOR by sending message "JOIN pport" to cport
+	/**
+	 * Registers with the coordinator by sending a message
+	 */
+	private void registerWithCoordinator()
+	{
+		System.out.println("JOIN " + pport);
+	}
 
-	// 2. LISTEN FOR DETAILS of other participants on cport <- message: "DETAILS [ports]"
-	//    add all of the participants to the database
+	/**
+	 * Listens for the details of other participants sent by the coordinator
+	 */
+	private void listenForDetails()
+	{
 
-	// 3. GET VOTE OPTIONS from coordinator on cport <- message: "VOTE_OPTIONS [option]"
-	//	  then decide own vote from options (randomly)
+	}
 
-	// 4. EXECUTE A NUMBER OF ROUNDS by exchanging messages directly with the other participants (TCP)
-	//    first round    <- send vote to all other participants <- message: "VOTE pport vote"
-	//    second onwards <- add any new info received before starting the round to the records
-	//                      send out this new info to each of the participants
-	//                      if the records are complete then continue to next step, otherwise start new round
+	/**
+	 * Listens for the vote options sent by the coordinator
+	 */
+	private void listenForVoteOptions()
+	{
 
-	// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
-
-	// 6. INFORM COORDINATOR of outcome on cport <- "OUTCOME outcome [port]"
-	//    where outcome is the decided winning vote and the list is all the participants who took part
+	}
 }

@@ -14,6 +14,14 @@ public class Coordinator extends Thread
 		try
 		{
 			Coordinator coordinator = new Coordinator(args);
+
+			// 1. WAIT FOR PARTICIPANTS to join <- message: "JOIN port"
+
+			// 2. SEND PARTICIPANT DETAILS to each participant <- message: "DETAILS [port]"
+
+			// 3. SEND REQUEST FOR VOTES to each participant <- message: "VOTE_OPTIONS [option]"
+
+			// 4. RECEIVE VOTES from participants <- message: "OUTCOME outcome [port]"
 		}
 		catch(ArgumentQuantityException e)
 		{
@@ -21,6 +29,9 @@ public class Coordinator extends Thread
 		}
 	}
 
+	/**
+	 * Not enough arguments are given
+	 */
 	static class ArgumentQuantityException extends Exception
 	{
 		String[] args;
@@ -52,11 +63,5 @@ public class Coordinator extends Thread
 				           + this.timeout + ", O: " + Arrays.toString(this.options));
 	}
 
-	// 1. WAIT FOR PARTICIPANTS to join <- message: "JOIN port"
 
-	// 2. SEND PARTICIPANT DETAILS to each participant <- message: "DETAILS [port]"
-
-	// 3. SEND REQUEST FOR VOTES to each participant <- message: "VOTE_OPTIONS [option]"
-
-	// 4. RECEIVE VOTES from participants <- message: "OUTCOME outcome [port]"
 }
