@@ -33,12 +33,12 @@ public class Participant extends Thread
 			participant.listenForVoteOptions();
 
 			// 4. EXECUTE A NUMBER OF ROUNDS by exchanging messages directly with the other participants (TCP)
-			//    first round    <- send vote to all other participants <- message: "VOTE pport vote"
+			//    first round    <- send vote to all other participants <- message: "VOTE participantPort vote"
 			//    second onwards <- add any new info received before starting the round to the records
 			//                      send out this new info to each of the participants
 			//                      if the records are complete then continue to next step, otherwise start new round
 			// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
-			// 6. INFORM COORDINATOR of outcome on cport <- "OUTCOME outcome [port]"
+			// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
 			//    where outcome is the decided winning vote and the list is all the participants who took part
 		}
 		catch(ArgumentQuantityException e)
@@ -110,7 +110,7 @@ public class Participant extends Thread
 	 */
 	private void registerWithCoordinator()
 	{
-		// 1. REGISTER WITH COORDINATOR by sending message "JOIN pport" to cport
+		// 1. REGISTER WITH COORDINATOR by sending message "JOIN participantPort" to coordinatorPort
 		out.println("JOIN " + participantPort);
 	}
 
@@ -120,7 +120,7 @@ public class Participant extends Thread
 	 */
 	private void listenForDetails() throws IOException
 	{
-		// 2. LISTEN FOR DETAILS of other participants on cport <- message: "DETAILS [ports]"
+		// 2. LISTEN FOR DETAILS of other participants on coordinatorPort <- message: "DETAILS [ports]"
 		//    add all of the participants to the database
 		while (true)
 		{
@@ -147,7 +147,7 @@ public class Participant extends Thread
 	 */
 	private void listenForVoteOptions() throws IOException
 	{
-		// 3. GET VOTE OPTIONS from coordinator on cport <- message: "VOTE_OPTIONS [option]"
+		// 3. GET VOTE OPTIONS from coordinator on coordinatorPort <- message: "VOTE_OPTIONS [option]"
 		//	  then decide own vote from options (randomly)
 		while (true)
 		{
