@@ -76,17 +76,17 @@ public class Coordinator extends Thread
 		try
 		{
 			serverSocket = new ServerSocket(coordinatorPort);
-			System.out.println("Coordinator: Initialised listening on " + coordinatorPort + ", expecting " + parts + " participants, options: " + options.toString());
+			System.out.println("Coordinator > Initialised listening on " + coordinatorPort + ", expecting " + parts + " participants, options: " + options.toString());
 		}
 		catch(IOException e)
 		{
 			e.printStackTrace();
 		}
-		System.out.println("Server socket initialised");
 	}
 
 	/**
 	 * Wait for the required number of participants to join
+	 * @throws IOException if there is a problem with the socket
 	 */
 	private void waitForParticipants() throws IOException
 	{

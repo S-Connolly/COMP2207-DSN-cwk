@@ -3,7 +3,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.Arrays;
+import java.util.*;
 
 public class Participant extends Thread
 {
@@ -12,24 +12,24 @@ public class Participant extends Thread
 	private final int participantPort; // this participant is listening on
 	private final int timeout; // timeout in milliseconds <- used when waiting for a message from another process to decide whether that process has failed.
 
-	private PrintWriter out;
-	private BufferedReader in;
+	private PrintWriter out; // send messages to coordinator
+	private BufferedReader in; // recieve messages from coordinator
+
+	private List<Integer> participants = new ArrayList<>(); // list of other participants
+	private List<String> options = new ArrayList<>(); // list of vote options
+
+	private String vote; // vote of this participant
+	private final Map<Integer, String> votes = new HashMap<>(); // map of participants to votes
 
 	public static void main(String[] args)
 	{
 		try
 		{
 			Participant participant = new Participant(args);
-
-			// 1. REGISTER WITH COORDINATOR by sending message "JOIN pport" to cport
 			participant.registerWithCoordinator();
-
-			// 2. LISTEN FOR DETAILS of other participants on cport <- message: "DETAILS [ports]"
-			//    add all of the participants to the database
 			participant.listenForDetails();
 
-			// 3. GET VOTE OPTIONS from coordinator on cport <- message: "VOTE_OPTIONS [option]"
-			//	  then decide own vote from options (randomly)
+
 			participant.listenForVoteOptions();
 
 			// 4. EXECUTE A NUMBER OF ROUNDS by exchanging messages directly with the other participants (TCP)
@@ -42,6 +42,10 @@ public class Participant extends Thread
 			//    where outcome is the decided winning vote and the list is all the participants who took part
 		}
 		catch(ArgumentQuantityException e)
+		{
+			e.printStackTrace();
+		}
+		catch(IOException e)
 		{
 			e.printStackTrace();
 		}
@@ -78,7 +82,6 @@ public class Participant extends Thread
 		System.out.println("Running with C: " + this.coordinatorPort + ", L: " + this.loggerPort + ", P: " + this.participantPort + ", T: " + this.timeout);
 
 		establishCoordinatorIO();
-		System.out.println("Coordinator connection established");
 
 	}
 
@@ -94,7 +97,7 @@ public class Participant extends Thread
 			socket.setSoLinger(true, timeout); // <-------------------------------------------------------------------- not too sure about this
 			out = new PrintWriter(socket.getOutputStream(), true);
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			System.out.println(participantPort + ": Initialised Participant, listening on " + participantPort);
+			System.out.println(participantPort + " > Initialised Participant, listening on " + participantPort);
 		}
 		catch(IOException e)
 		{
@@ -107,22 +110,67 @@ public class Participant extends Thread
 	 */
 	private void registerWithCoordinator()
 	{
+		// 1. REGISTER WITH COORDINATOR by sending message "JOIN pport" to cport
 		out.println("JOIN " + participantPort);
 	}
 
 	/**
 	 * Listens for the details of other participants sent by the coordinator
+	 * @throws IOException if there is a problem with the socket
 	 */
-	private void listenForDetails()
+	private void listenForDetails() throws IOException
 	{
-
+		// 2. LISTEN FOR DETAILS of other participants on cport <- message: "DETAILS [ports]"
+		//    add all of the participants to the database
+		while (true)
+		{
+			String[] input = in.readLine().split(" ");
+			if(input[0].equals("DETAILS"))
+			{
+				for(int i = 1; i < input.length; i++)
+				{
+					participants.add(Integer.parseInt(input[i]));
+				}
+				System.out.println(participantPort + " > Participants: " + participants.toString());
+				break;
+			}
+			else
+			{
+				System.err.println(participantPort + "> Expecting DETAILS message but instead received: " + input[0]);
+			}
+		}
 	}
 
 	/**
 	 * Listens for the vote options sent by the coordinator
+	 * @throws IOException if there is a problem with the socket
 	 */
-	private void listenForVoteOptions()
+	private void listenForVoteOptions() throws IOException
 	{
+		// 3. GET VOTE OPTIONS from coordinator on cport <- message: "VOTE_OPTIONS [option]"
+		//	  then decide own vote from options (randomly)
+		while (true)
+		{
+			String[] input = in.readLine().split(" ");
+			if(input[0].equals("VOTE_OPTIONS"))
+			{
+				for(int i = 1; i < input.length; i++)
+				{
+					options.add(input[i]);
+				}
+				System.out.println(participantPort + " > Options: " + options.toString());
+				break;
+			}
+			else
+			{
+				System.err.println(participantPort + "> Expecting VOTE_OPTIONS message but instead received: " + input[0]);
+			}
+		}
 
+		// Choose option and add it to the map
+		Collections.shuffle(options);
+		vote = options.get(0);
+		votes.put(participantPort, vote);
+		System.out.println(participantPort + " > Selected vote: " + vote);
 	}
 }
