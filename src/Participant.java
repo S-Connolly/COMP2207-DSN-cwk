@@ -1,12 +1,19 @@
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
 import java.util.Arrays;
 
 public class Participant extends Thread
 {
-	private final int cport; // coordinator is listening on
-	private final int lport; // logger server is listening on
-	private final int pport; // this participant is listening on
+	private final int coordinatorPort; // coordinator is listening on
+	private final int loggerPort; // logger server is listening on
+	private final int participantPort; // this participant is listening on
 	private final int timeout; // timeout in milliseconds <- used when waiting for a message from another process to decide whether that process has failed.
 
+	private PrintWriter out;
+	private BufferedReader in;
 
 	public static void main(String[] args)
 	{
@@ -64,12 +71,35 @@ public class Participant extends Thread
 			throw new ArgumentQuantityException(args);
 		}
 
-		this.cport = Integer.parseInt(args[0]);
-		this.lport = Integer.parseInt(args[1]);
-		this.pport = Integer.parseInt(args[2]);
+		this.coordinatorPort = Integer.parseInt(args[0]);
+		this.loggerPort = Integer.parseInt(args[1]);
+		this.participantPort = Integer.parseInt(args[2]);
 		this.timeout = Integer.parseInt(args[3]);
+		System.out.println("Running with C: " + this.coordinatorPort + ", L: " + this.loggerPort + ", P: " + this.participantPort + ", T: " + this.timeout);
 
-		System.out.println("Running with C: " + this.cport + ", L: " + this.lport + ", P: " + this.pport + ", T: " + this.timeout);
+		establishCoordinatorIO();
+		System.out.println("Coordinator connection established");
+
+	}
+
+	/**
+	 * Establishes an IO connection with the coordinator
+	 * take input -> in, send output -> out
+	 */
+	private void establishCoordinatorIO()
+	{
+		try
+		{
+			Socket socket = new Socket("localhost", coordinatorPort);
+			socket.setSoLinger(true, timeout); // <-------------------------------------------------------------------- not too sure about this
+			out = new PrintWriter(socket.getOutputStream(), true);
+			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			System.out.println(participantPort + ": Initialised Participant, listening on " + participantPort);
+		}
+		catch(IOException e)
+		{
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -77,7 +107,7 @@ public class Participant extends Thread
 	 */
 	private void registerWithCoordinator()
 	{
-		System.out.println("JOIN " + pport);
+		out.println("JOIN " + participantPort);
 	}
 
 	/**
