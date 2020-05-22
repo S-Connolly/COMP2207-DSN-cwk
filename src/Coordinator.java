@@ -4,8 +4,10 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
 public class Coordinator extends Thread
 {
@@ -17,7 +19,8 @@ public class Coordinator extends Thread
 
 	private ServerSocket serverSocket; // the socket of this coordinator
 
-	private HashMap<Thread, Socket> participants = new HashMap<>(); // map of the participants to their respective sockets
+	private HashMap<Thread, Socket> participantSockets = new HashMap<>(); // map of the threads handling participants to the sockets they are using
+	private List<Integer> participants = new ArrayList<>();
 
 	public static void main(String[] args)
 	{
@@ -25,12 +28,6 @@ public class Coordinator extends Thread
 		{
 			Coordinator coordinator = new Coordinator(args);
 			coordinator.waitForParticipants();
-
-			// 2. SEND PARTICIPANT DETAILS to each participant <- message: "DETAILS [port]"
-
-			// 3. SEND REQUEST FOR VOTES to each participant <- message: "VOTE_OPTIONS [option]"
-
-			// 4. RECEIVE VOTES from participants <- message: "OUTCOME outcome [port]"
 		}
 		catch(ArgumentQuantityException e)
 		{
@@ -39,24 +36,6 @@ public class Coordinator extends Thread
 		catch(IOException e)
 		{
 			e.printStackTrace();
-		}
-	}
-
-	static class ArgumentQuantityException extends Exception
-	{
-		String[] args;
-
-		/**
-		 * Not enough arguments are given
-		 * @param args The list of arguments
-		 */
-		ArgumentQuantityException(String[] args)
-		{
-			this.args = args;
-		}
-
-		public String toString() {
-			return "Insufficient number of arguments: " + Arrays.toString(args);
 		}
 	}
 
@@ -92,30 +71,56 @@ public class Coordinator extends Thread
 	 */
 	private void waitForParticipants() throws IOException
 	{
-		// 1. WAIT FOR PARTICIPANTS to join <- message: "JOIN port"
+		// Wait to connect with the number of participants specified in the args
 		Socket socket;
-		while(participants.size() < parts)
+		while(participantSockets.size() < parts)
 		{
 			socket = serverSocket.accept();
-			socket.setSoLinger(true, 0); // <-------------------------------------------------------------------- not too sure about this
+			socket.setSoLinger(true, 0);
 			System.out.println("Coordinator > A participant has connected to the coordinator");
 
 			// Create a thread to handle the participant and add it to the map
 			Thread thread = new ParticipantHandler(socket);
-			synchronized(participants) // only one thread can be interacting with 'participants' at a time
+			synchronized(participantSockets) // only one thread can be interacting with 'participants' at a time
 			{
-				participants.put(thread, socket);
+				participantSockets.put(thread, socket);
 			}
 			thread.start();
 		}
 		System.out.println("Coordinator > All participants have connected to the coordinator");
 	}
 
+	/**
+	 * Adds the participant to the vote pool and if the required number has been reached, send out the details
+	 * @param port The port number of the participant that sent the JOIN message
+	 */
+	private void addParticipant(int port) throws TooManyParticipantsException
+	{
+		if(participants.size() < parts)
+		{
+			participants.add(port);
+			if(participants.size() == parts) // If there is now the required number of participants
+			{
+				// 2. SEND PARTICIPANT DETAILS to each participant <- message: "DETAILS [port]"
+
+				// 3. SEND REQUEST FOR VOTES to each participant <- message: "VOTE_OPTIONS [option]"
+
+				// 4. RECEIVE VOTES from participants <- message: "OUTCOME outcome [port]"
+			}
+		}
+		else // If the required number of participants had already been reached throw an exception
+		{
+			throw new TooManyParticipantsException();
+		}
+	}
+
 	private class ParticipantHandler extends Thread
 	{
-		private final Socket socket;
-		private final BufferedReader in;
-		private final PrintWriter out;
+		private final Socket socket; // the socket of the participant this thread is handling
+		private final BufferedReader in; // receive messages from the participant
+		private final PrintWriter out;; // send messages to the participant
+
+		private int participantPort; // the port of the participant this thread is handling
 
 		/**
 		 * Handles the connection to a participant
@@ -130,5 +135,62 @@ public class Coordinator extends Thread
 			this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			this.out = new PrintWriter(socket.getOutputStream(), true);
 		}
+
+		@Override
+		public void run()
+		{
+			// 1. WAIT FOR PARTICIPANTS to join <- message: "JOIN port"
+			String[] input;
+			while (true)
+			{
+				try
+				{
+					input = in.readLine().split(" ");
+					if(input[0].equals("JOIN"))
+					{
+						participantPort = Integer.parseInt(input[1]);
+						addParticipant(participantPort);
+					}
+				}
+				catch(IOException e)
+				{
+					e.printStackTrace();
+					break;
+				}
+				catch(TooManyParticipantsException e)
+				{
+					e.printStackTrace();
+					break;
+				}
+			}
+		}
+	}
+
+	static class ArgumentQuantityException extends Exception
+	{
+		String[] args;
+
+		/**
+		 * Not enough arguments are given
+		 * @param args The list of arguments
+		 */
+		ArgumentQuantityException(String[] args)
+		{
+			this.args = args;
+		}
+
+		@Override
+		public String toString()
+		{
+			return "Insufficient number of arguments: " + Arrays.toString(args);
+		}
+	}
+
+	static class TooManyParticipantsException extends Exception
+	{
+		/**
+		 * Cannot add another participant as the specified number has already been reached
+		 */
+		TooManyParticipantsException(){ }
 	}
 }

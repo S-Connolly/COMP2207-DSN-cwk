@@ -13,7 +13,7 @@ public class Participant extends Thread
 	private final int timeout; // timeout in milliseconds <- used when waiting for a message from another process to decide whether that process has failed.
 
 	private PrintWriter out; // send messages to coordinator
-	private BufferedReader in; // recieve messages from coordinator
+	private BufferedReader in; // receive messages from coordinator
 
 	private List<Integer> participants = new ArrayList<>(); // list of other participants
 	private List<String> options = new ArrayList<>(); // list of vote options
@@ -28,9 +28,8 @@ public class Participant extends Thread
 			Participant participant = new Participant(args);
 			participant.registerWithCoordinator();
 			participant.listenForDetails();
-
-
 			participant.listenForVoteOptions();
+
 
 			// 4. EXECUTE A NUMBER OF ROUNDS by exchanging messages directly with the other participants (TCP)
 			//    first round    <- send vote to all other participants <- message: "VOTE participantPort vote"
@@ -41,7 +40,7 @@ public class Participant extends Thread
 			// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
 			//    where outcome is the decided winning vote and the list is all the participants who took part
 		}
-		catch(ArgumentQuantityException e)
+		catch(Coordinator.ArgumentQuantityException e)
 		{
 			e.printStackTrace();
 		}
@@ -51,29 +50,11 @@ public class Participant extends Thread
 		}
 	}
 
-	static class ArgumentQuantityException extends Exception
-	{
-		String[] args;
-
-		/**
-		 * Not enough arguments are given
-		 * @param args The list of arguments
-		 */
-		ArgumentQuantityException(String[] args)
-		{
-			this.args = args;
-		}
-
-		public String toString() {
-			return "Insufficient number of arguments: " + Arrays.toString(args);
-		}
-	}
-
-	private Participant(String[] args) throws ArgumentQuantityException
+	private Participant(String[] args) throws Coordinator.ArgumentQuantityException
 	{
 		if (args.length < 4)
 		{
-			throw new ArgumentQuantityException(args);
+			throw new Coordinator.ArgumentQuantityException(args);
 		}
 
 		this.coordinatorPort = Integer.parseInt(args[0]);
@@ -95,7 +76,7 @@ public class Participant extends Thread
 		try
 		{
 			Socket socket = new Socket("localhost", coordinatorPort);
-			socket.setSoLinger(true, 0); // <-------------------------------------------------------------------- not too sure about this
+			socket.setSoLinger(true, 0);
 			out = new PrintWriter(socket.getOutputStream(), true);
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			System.out.println(participantPort + " > Initialised Participant, listening on " + participantPort);
