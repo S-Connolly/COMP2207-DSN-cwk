@@ -1,4 +1,7 @@
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Arrays;
@@ -12,17 +15,15 @@ public class Coordinator extends Thread
 	private final int timeout; // timeout in milliseconds <- used when waiting for a message from a participant to decide whether that participant has failed.
 	private final String[] options; // set (no duplicates) of options
 
-	private ServerSocket serverSocket;
+	private ServerSocket serverSocket; // the socket of this coordinator
 
-	private HashMap<Thread, Socket> participants = new HashMap<>();
+	private HashMap<Thread, Socket> participants = new HashMap<>(); // map of the participants to their respective sockets
 
 	public static void main(String[] args)
 	{
 		try
 		{
 			Coordinator coordinator = new Coordinator(args);
-
-			// 1. WAIT FOR PARTICIPANTS to join <- message: "JOIN port"
 			coordinator.waitForParticipants();
 
 			// 2. SEND PARTICIPANT DETAILS to each participant <- message: "DETAILS [port]"
@@ -41,13 +42,14 @@ public class Coordinator extends Thread
 		}
 	}
 
-	/**
-	 * Not enough arguments are given
-	 */
 	static class ArgumentQuantityException extends Exception
 	{
 		String[] args;
 
+		/**
+		 * Not enough arguments are given
+		 * @param args The list of arguments
+		 */
 		ArgumentQuantityException(String[] args)
 		{
 			this.args = args;
@@ -76,7 +78,7 @@ public class Coordinator extends Thread
 		try
 		{
 			serverSocket = new ServerSocket(coordinatorPort);
-			System.out.println("Coordinator > Initialised listening on " + coordinatorPort + ", expecting " + parts + " participants, options: " + options.toString());
+			System.out.println("Coordinator > Initialised and listening on port " + coordinatorPort + ", waiting for " + parts + " participants, options: " + Arrays.toString(options));
 		}
 		catch(IOException e)
 		{
@@ -90,13 +92,43 @@ public class Coordinator extends Thread
 	 */
 	private void waitForParticipants() throws IOException
 	{
+		// 1. WAIT FOR PARTICIPANTS to join <- message: "JOIN port"
 		Socket socket;
 		while(participants.size() < parts)
 		{
 			socket = serverSocket.accept();
-			socket.setSoLinger(true, timeout); // <-------------------------------------------------------------------- not too sure about this
+			socket.setSoLinger(true, 0); // <-------------------------------------------------------------------- not too sure about this
+			System.out.println("Coordinator > A participant has connected to the coordinator");
 
-			// CREATE THE THREAD TO HANDLE THE PARTICIPANT + ADD IT TO THE MAP
+			// Create a thread to handle the participant and add it to the map
+			Thread thread = new ParticipantHandler(socket);
+			synchronized(participants) // only one thread can be interacting with 'participants' at a time
+			{
+				participants.put(thread, socket);
+			}
+			thread.start();
+		}
+		System.out.println("Coordinator > All participants have connected to the coordinator");
+	}
+
+	private class ParticipantHandler extends Thread
+	{
+		private final Socket socket;
+		private final BufferedReader in;
+		private final PrintWriter out;
+
+		/**
+		 * Handles the connection to a participant
+		 * @param socket
+		 * @throws IOException
+		 */
+		public ParticipantHandler(Socket socket) throws IOException
+		{
+			this.socket = socket;
+			socket.setSoLinger(true, 0);
+
+			this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			this.out = new PrintWriter(socket.getOutputStream(), true);
 		}
 	}
 }

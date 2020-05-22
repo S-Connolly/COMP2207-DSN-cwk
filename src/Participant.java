@@ -51,13 +51,14 @@ public class Participant extends Thread
 		}
 	}
 
-	/**
-	 * Not enough arguments are given
-	 */
 	static class ArgumentQuantityException extends Exception
 	{
 		String[] args;
 
+		/**
+		 * Not enough arguments are given
+		 * @param args The list of arguments
+		 */
 		ArgumentQuantityException(String[] args)
 		{
 			this.args = args;
@@ -94,7 +95,7 @@ public class Participant extends Thread
 		try
 		{
 			Socket socket = new Socket("localhost", coordinatorPort);
-			socket.setSoLinger(true, timeout); // <-------------------------------------------------------------------- not too sure about this
+			socket.setSoLinger(true, 0); // <-------------------------------------------------------------------- not too sure about this
 			out = new PrintWriter(socket.getOutputStream(), true);
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			System.out.println(participantPort + " > Initialised Participant, listening on " + participantPort);
