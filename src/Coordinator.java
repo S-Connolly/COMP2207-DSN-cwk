@@ -19,7 +19,7 @@ public class Coordinator extends Thread
 
 	private ServerSocket serverSocket; // the socket of this coordinator
 
-	private HashMap<Thread, Socket> participantSockets = new HashMap<>(); // map of the threads handling participants to the sockets they are using
+	private HashMap<ParticipantHandler, Socket> participantSockets = new HashMap<>(); // map of the threads handling participants to the sockets they are using
 	private List<Integer> participants = new ArrayList<>();
 
 	public static void main(String[] args)
@@ -80,7 +80,7 @@ public class Coordinator extends Thread
 			System.out.println("Coordinator > A participant has connected to the coordinator");
 
 			// Create a thread to handle the participant and add it to the map
-			Thread thread = new ParticipantHandler(socket);
+			ParticipantHandler thread = new ParticipantHandler(socket);
 			synchronized(participantSockets) // only one thread can be interacting with 'participants' at a time
 			{
 				participantSockets.put(thread, socket);
@@ -102,8 +102,12 @@ public class Coordinator extends Thread
 			if(participants.size() == parts) // If there is now the required number of participants
 			{
 				// 2. SEND PARTICIPANT DETAILS to each participant <- message: "DETAILS [port]"
+				sendDetails();
+				System.out.println("Coordinator > Sending out details to participants");
 
 				// 3. SEND REQUEST FOR VOTES to each participant <- message: "VOTE_OPTIONS [option]"
+				sendOptions();
+				System.out.println("Coordinator > Sending out options to participants");
 
 				// 4. RECEIVE VOTES from participants <- message: "OUTCOME outcome [port]"
 			}
@@ -114,13 +118,55 @@ public class Coordinator extends Thread
 		}
 	}
 
+	/**
+	 * Send the details of all other participants to each of the participants
+	 */
+	private void sendDetails()
+	{
+		synchronized(participantSockets)
+		{
+			for(ParticipantHandler thread : participantSockets.keySet())
+			{
+				thread.sendDetails();
+			}
+		}
+	}
+
+	private void sendOptions()
+	{
+		// Create message of all options
+		StringBuilder message = new StringBuilder("VOTE_OPTIONS ");
+		for (String option : options)
+		{
+			message.append(option + " ");
+		}
+		sendToAll(message.toString());
+	}
+
+	/**
+	 * Send a message to each of the participants
+	 * @param message The message to be sent
+	 */
+	private void sendToAll(String message)
+	{
+		synchronized(participantSockets)
+		{
+			for(ParticipantHandler thread : participantSockets.keySet())
+			{
+				thread.sendMessage(message);
+			}
+		}
+	}
+
+
+
 	private class ParticipantHandler extends Thread
 	{
 		private final Socket socket; // the socket of the participant this thread is handling
 		private final BufferedReader in; // receive messages from the participant
 		private final PrintWriter out;; // send messages to the participant
 
-		private int participantPort; // the port of the participant this thread is handling
+		private int thisPort; // the port of the participant this thread is handling
 
 		/**
 		 * Handles the connection to a participant
@@ -148,8 +194,8 @@ public class Coordinator extends Thread
 					input = in.readLine().split(" ");
 					if(input[0].equals("JOIN"))
 					{
-						participantPort = Integer.parseInt(input[1]);
-						addParticipant(participantPort);
+						thisPort = Integer.parseInt(input[1]);
+						addParticipant(thisPort);
 					}
 				}
 				catch(IOException e)
@@ -163,6 +209,32 @@ public class Coordinator extends Thread
 					break;
 				}
 			}
+		}
+
+		/**
+		 * Sends a message to the participant
+		 * @param message The message to be sent
+		 */
+		public void sendMessage(String message)
+		{
+			out.println(message);
+		}
+
+		/**
+		 * Sends the details of all other participants to this participant
+		 */
+		public void sendDetails()
+		{
+			StringBuilder message = new StringBuilder("DETAILS ");
+			for(Integer participant : participants)
+			{
+				if(participant != thisPort)
+				{
+					message.append(participant + " ");
+				}
+			}
+
+			out.println(message);
 		}
 	}
 
