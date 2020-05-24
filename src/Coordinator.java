@@ -20,24 +20,7 @@ public class Coordinator extends Thread
 	private ServerSocket serverSocket; // the socket of this coordinator
 
 	private HashMap<ParticipantHandler, Socket> participantSockets = new HashMap<>(); // map of the threads handling participants to the sockets they are using
-	private List<Integer> participants = new ArrayList<>();
-
-	public static void main(String[] args)
-	{
-		try
-		{
-			Coordinator coordinator = new Coordinator(args);
-			coordinator.waitForParticipants();
-		}
-		catch(ArgumentQuantityException e)
-		{
-			e.printStackTrace();
-		}
-		catch(IOException e)
-		{
-			e.printStackTrace();
-		}
-	}
+	private List<Integer> participants = new ArrayList<>(); // list of the participant's ports
 
 	private Coordinator(String[] args) throws ArgumentQuantityException
 	{
@@ -69,7 +52,7 @@ public class Coordinator extends Thread
 	 * Wait for the required number of participants to join
 	 * @throws IOException if there is a problem with the socket
 	 */
-	private void waitForParticipants() throws IOException
+	private void waitForParticipants() throws IOException //---------------------------------------------------------------- IMPLEMENT THE TIMEOUT
 	{
 		// Wait to connect with the number of participants specified in the args
 		Socket socket;
@@ -158,8 +141,6 @@ public class Coordinator extends Thread
 		}
 	}
 
-
-
 	private class ParticipantHandler extends Thread
 	{
 		private final Socket socket; // the socket of the participant this thread is handling
@@ -170,7 +151,7 @@ public class Coordinator extends Thread
 
 		/**
 		 * Handles the connection to a participant
-		 * @param socket
+		 * @param socket The socket of the connection
 		 * @throws IOException
 		 */
 		public ParticipantHandler(Socket socket) throws IOException
@@ -198,12 +179,7 @@ public class Coordinator extends Thread
 						addParticipant(thisPort);
 					}
 				}
-				catch(IOException e)
-				{
-					e.printStackTrace();
-					break;
-				}
-				catch(TooManyParticipantsException e)
+				catch(IOException | TooManyParticipantsException e)
 				{
 					e.printStackTrace();
 					break;
@@ -264,5 +240,18 @@ public class Coordinator extends Thread
 		 * Cannot add another participant as the specified number has already been reached
 		 */
 		TooManyParticipantsException(){ }
+	}
+
+	public static void main(String[] args)
+	{
+		try
+		{
+			Coordinator coordinator = new Coordinator(args);
+			coordinator.waitForParticipants();
+		}
+		catch(ArgumentQuantityException | IOException e)
+		{
+			e.printStackTrace();
+		}
 	}
 }

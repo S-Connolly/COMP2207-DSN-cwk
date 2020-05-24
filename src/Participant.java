@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 
@@ -20,35 +21,12 @@ public class Participant extends Thread
 
 	private String vote; // vote of this participant
 	private final Map<Integer, String> votes = new HashMap<>(); // map of participants to votes
+	private HashMap<ParticipantListener, Socket> participantReadSockets = new HashMap<>(); // map of the ParticipantListeners to the sockets they are using
+	private HashMap<ParticipantWriter, Socket> participantWriteSockets = new HashMap<>(); // map of the ParticipantWriters to the sockets they are using
 
-	public static void main(String[] args)
-	{
-		try
-		{
-			Participant participant = new Participant(args);
-			participant.registerWithCoordinator();
-			participant.listenForDetails();
-			participant.listenForVoteOptions();
-
-
-			// 4. EXECUTE A NUMBER OF ROUNDS by exchanging messages directly with the other participants (TCP)
-			//    first round    <- send vote to all other participants <- message: "VOTE participantPort vote"
-			//    second onwards <- add any new info received before starting the round to the records
-			//                      send out this new info to each of the participants
-			//                      if the records are complete then continue to next step, otherwise start new round
-			// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
-			// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
-			//    where outcome is the decided winning vote and the list is all the participants who took part
-		}
-		catch(Coordinator.ArgumentQuantityException e)
-		{
-			e.printStackTrace();
-		}
-		catch(IOException e)
-		{
-			e.printStackTrace();
-		}
-	}
+	private ServerSocket serverSocket;
+	private final int maxRounds = 1; // the maximum number of rounds to run
+	private int round = 1; // the round this participant is currently on
 
 	private Participant(String[] args) throws Coordinator.ArgumentQuantityException
 	{
@@ -64,7 +42,6 @@ public class Participant extends Thread
 		System.out.println("Running with C: " + this.coordinatorPort + ", L: " + this.loggerPort + ", P: " + this.participantPort + ", T: " + this.timeout);
 
 		establishCoordinatorIO();
-
 	}
 
 	/**
@@ -100,7 +77,7 @@ public class Participant extends Thread
 	 * Listens for the details of other participants sent by the coordinator
 	 * @throws IOException if there is a problem with the socket
 	 */
-	private void listenForDetails() throws IOException
+	private void listenForDetails() throws IOException, WrongMessageException
 	{
 		// 2. LISTEN FOR DETAILS of other participants on coordinatorPort <- message: "DETAILS [ports]"
 		//    add all of the participants to the database
@@ -118,7 +95,7 @@ public class Participant extends Thread
 			}
 			else
 			{
-				System.err.println(participantPort + "> Expecting DETAILS message but instead received: " + input[0]);
+				throw new WrongMessageException("VOTE_OPTIONS", input[0]);
 			}
 		}
 	}
@@ -127,7 +104,7 @@ public class Participant extends Thread
 	 * Listens for the vote options sent by the coordinator
 	 * @throws IOException if there is a problem with the socket
 	 */
-	private void listenForVoteOptions() throws IOException
+	private void listenForVoteOptions() throws IOException, WrongMessageException
 	{
 		// 3. GET VOTE OPTIONS from coordinator on coordinatorPort <- message: "VOTE_OPTIONS [option]"
 		//	  then decide own vote from options (randomly)
@@ -145,7 +122,7 @@ public class Participant extends Thread
 			}
 			else
 			{
-				System.err.println(participantPort + "> Expecting VOTE_OPTIONS message but instead received: " + input[0]);
+				throw new WrongMessageException("VOTE_OPTIONS", input[0]);
 			}
 		}
 
@@ -154,5 +131,212 @@ public class Participant extends Thread
 		vote = options.get(0);
 		votes.put(participantPort, vote);
 		System.out.println(participantPort + " > Selected vote: " + vote);
+	}
+
+	/**
+	 * Attempt to establish a connection to each of the other participants
+	 */
+	private void connectToParticipants()
+	{
+		for(int participant : participants)
+		{
+			try
+			{
+				Socket socket = new Socket("localhost", participant);
+				ParticipantWriter thread = new ParticipantWriter(socket);
+				synchronized(participantWriteSockets)
+				{
+					participantWriteSockets.put(thread, socket);
+				}
+				thread.start();
+				System.out.println(participantPort + " > Connecting to " + participant);
+			}
+			catch(IOException e)
+			{
+				e.printStackTrace();
+			}
+		}
+	}
+
+	/**
+	 * Waits for all other participants to open a connection and assigns a ParticipantListener to them
+	 */
+	public void waitForParticipants() //----------------------------------------------------------------------------------------- IMPLEMENT THE TIMEOUT
+	{
+		try
+		{
+			serverSocket = new ServerSocket(participantPort);
+			Socket socket;
+			while(participantReadSockets.size() < participants.size())
+			{
+				socket = serverSocket.accept();
+				socket.setSoLinger(true, 0);
+				System.out.println(participantPort + " > A participant has connected to " + participantPort);
+
+				// Create a thread to handle the participant and add it to the map
+				ParticipantListener thread = new ParticipantListener(socket);
+				synchronized(participantReadSockets) // only one thread can be interacting with 'participants' at a time
+				{
+					participantReadSockets.put(thread, socket);
+				}
+				thread.start();
+			}
+			System.out.println(participantPort + " > All participants have connected to " + participantPort);
+		}
+		catch(IOException e)
+		{
+			e.printStackTrace();
+		}
+	}
+
+	private class ParticipantWriter extends Thread
+	{
+		private final Socket socket; // the socket of the participant this thread is handling
+		private final PrintWriter out; // send messages to the participant
+
+		private int thisRound;
+
+		/**
+		 * Handles sending out messages to other participants
+		 * @param socket
+		 * @throws IOException
+		 */
+		public ParticipantWriter(Socket socket) throws IOException
+		{
+			this.thisRound = 1;
+			this.socket = socket;
+			socket.setSoLinger(true, 0);
+			this.out = new PrintWriter(socket.getOutputStream(), true);
+		}
+
+		// Run method which has a loop checking round
+		// Method for sending a message
+	}
+
+	private class ParticipantListener extends Thread
+	{
+		private final Socket socket; // the socket of the participant this thread is handling
+		private final BufferedReader in; // receive messages from the participant
+
+		private int thisPort; // the port of the participant this thread is handling
+		private String thisVote; // the vote chosen by the participant this thread is handling
+
+		private int thisRound;
+
+		/**
+		 * Handles incoming messages from other participants
+		 * @param socket The socket of the connection
+		 * @throws IOException
+		 */
+		public ParticipantListener(Socket socket) throws IOException
+		{
+			this.thisRound = 1;
+			this.socket = socket;
+			socket.setSoLinger(true, 0);
+			this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+		}
+
+		@Override
+		public void run() //----------------------------------------------------------------------------------------------------------- IMPLEMENT THE TIMEOUT
+		{
+			String[] input;
+			while (true)
+			{
+				try
+				{
+					if(thisRound == round && round == 1) // the first round
+					{
+						input = in.readLine().split(" ");
+						if(input[0].equals("VOTE"))
+						{
+							thisPort = Integer.parseInt(input[1]);
+							thisVote = input[2];
+							synchronized(votes)
+							{
+								votes.put(thisPort, thisVote);
+							}
+							System.out.println(participantPort + " > Received vote: " + thisVote + " from: " + thisPort);
+							round += 1;
+						}
+						else
+						{
+							throw new WrongMessageException("VOTE", input[0]);
+						}
+					}
+					else if(thisRound == round && round <= maxRounds) // successive rounds
+					{
+						// procedure for successive rounds
+						round += 1;
+					}
+					else // all rounds are complete
+					{
+						System.out.println(participantPort + " > Finished listening from : " + vote);
+						socket.close();
+						in.close();
+						break;
+					}
+				}
+				catch(IOException | WrongMessageException e)
+				{
+					e.printStackTrace();
+					break;
+				}
+			}
+
+
+		}
+	}
+
+	static class WrongMessageException extends Exception
+	{
+		String expected;
+		String actual;
+
+		/**
+		 * A certain message was expected but a different one was received
+		 * @param expected The message that was expected
+		 * @param actual The message that was received
+		 */
+		WrongMessageException(String expected, String actual)
+		{
+			this.expected = expected;
+			this.actual = actual;
+		}
+
+		@Override
+		public String toString()
+		{
+			return "Expecting: \"" + expected + "\", but received: \"" + actual + "\"";
+		}
+	}
+
+	public static void main(String[] args)
+	{
+		try
+		{
+			Participant participant = new Participant(args);
+			participant.registerWithCoordinator();
+			participant.listenForDetails();
+			participant.listenForVoteOptions();
+
+
+
+
+			// 4. EXECUTE A NUMBER OF ROUNDS by exchanging messages directly with the other participants (TCP)
+			//    first round    <- send vote to all other participants <- message: "VOTE participantPort vote"
+			//    second onwards <- add any new info received before starting the round to the records
+			//                      send out this new info to each of the participants
+			//                      if the records are complete then continue to next step, otherwise start new round
+			participant.connectToParticipants(); // Attempt to establish a connection to all other participants
+			participant.waitForParticipants(); // Allow all other participants to connect to this one
+
+			// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
+			// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
+			//    where outcome is the decided winning vote and the list is all the participants who took part
+		}
+		catch(Coordinator.ArgumentQuantityException | IOException | WrongMessageException e)
+		{
+			e.printStackTrace();
+		}
 	}
 }
