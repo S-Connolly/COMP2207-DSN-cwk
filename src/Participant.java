@@ -23,6 +23,7 @@ public class Participant extends Thread
 	private String vote; // vote of this participant
 	private final Map<Integer, String> votes = new HashMap<>(); // map of participants to votes
 	private Map<Integer, String> newVotes = new HashMap<>(); // map of the votes that we're received last round
+	private String winningVote;
 	private HashMap<ParticipantListener, Socket> participantReadSockets = new HashMap<>(); // map of the ParticipantListeners to the sockets they are using
 	private HashMap<ParticipantWriter, Socket> participantWriteSockets = new HashMap<>(); // map of the ParticipantWriters to the sockets they are using
 
@@ -172,14 +173,34 @@ public class Participant extends Thread
 	private void decideOutcome()
 	{
 		// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
-		//
-		//
-		//
-		//
-		//
-		//
-		//
-		//
+		Map<String, Integer> voteCount = new HashMap<>();
+		for(String option : votes.values()) // count votes
+		{
+			if(voteCount.containsKey(option)) // if the option has already been seen then increment
+			{
+				voteCount.put(option, voteCount.get(option) + 1);
+			}
+			else // if the option hasn't already been seen it then add it with a value of 1
+			{
+				voteCount.put(option, 1);
+			}
+		}
+
+		winningVote = voteCount.keySet().iterator().next();
+		for(String option : voteCount.keySet())
+		{
+			if(voteCount.get(option) > voteCount.get(winningVote)) // if the next option is higher then use that
+			{
+				winningVote = option;
+			}
+			else if(voteCount.get(option) == voteCount.get(winningVote)) // if the next option is tied then pick the lexicographic first
+			{
+				if(!(winningVote.compareTo(option) < 0)) // if the new option is first lexicographically
+				{
+					winningVote = option;
+				}
+			}
+		}
 	}
 
 	private void informCoordinator()
