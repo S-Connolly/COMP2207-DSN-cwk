@@ -173,6 +173,9 @@ public class Participant extends Thread
 		runSuccessiveRounds(); // Complete the remaining rounds
 	}
 
+	/**
+	 * Counts up all of the votes and decides on the winning option
+	 */
 	private void decideOutcome()
 	{
 		// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
@@ -206,18 +209,21 @@ public class Participant extends Thread
 		}
 	}
 
+	/**
+	 * Inform the coordinator of the winning option and which participants were taken into account
+	 */
 	private void informCoordinator()
 	{
 		// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
 		//    where outcome is the decided winning vote and the list is all the participants who took part
 
-		StringBuilder message = new StringBuilder("VOTE " + winningVote + " " + coordinatorPort + " ");
-		for(int participant: participants)
+		StringBuilder message = new StringBuilder("OUTCOME " + winningVote + " ");
+		for(int participant: votes.keySet())
 		{
 			message.append(participant + " ");
 		}
 		coordinatorOut.println(message);
-		System.out.println(participantPort + " > Outcome: " + message.toString() + " sent to coordinator");
+		System.out.println(participantPort + " > Outcome: " + message.toString() + "sent to coordinator");
 
 		try // close everything
 		{

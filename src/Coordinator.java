@@ -22,6 +22,9 @@ public class Coordinator extends Thread
 	private HashMap<ParticipantHandler, Socket> participantSockets = new HashMap<>(); // map of the threads handling participants to the sockets they are using
 	private List<Integer> participants = new ArrayList<>(); // list of the participant's ports
 
+	private String outcome;
+	private List<String> outcomeParticipants = new ArrayList<>();
+
 	private Coordinator(String[] args) throws ArgumentQuantityException
 	{
 		if (args.length < 5)
@@ -172,14 +175,30 @@ public class Coordinator extends Thread
 			{
 				try
 				{
+					Thread.sleep(timeout);
 					input = in.readLine().split(" ");
 					if(input[0].equals("JOIN"))
 					{
 						thisPort = Integer.parseInt(input[1]);
 						addParticipant(thisPort);
 					}
+					else if(input[0].equals("OUTCOME"))
+					{
+						if(!(outcome == null))
+						{
+							outcome = input[1];
+							for(int i = 2; i < input.length; i++)
+							{
+								outcomeParticipants.add(input[i]);
+							}
+						}
+					}
+					else
+					{
+						throw new Participant.WrongMessageException("JOIN/OUTCOME", input[0]);
+					}
 				}
-				catch(IOException | TooManyParticipantsException e)
+				catch(IOException | TooManyParticipantsException | Participant.WrongMessageException | InterruptedException e)
 				{
 					e.printStackTrace();
 					break;
