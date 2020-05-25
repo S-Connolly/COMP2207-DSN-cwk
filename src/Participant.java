@@ -14,6 +14,7 @@ public class Participant extends Thread
 	private final int participantPort; // this participant is listening on
 	private final int timeout; // timeout in milliseconds <- used when waiting for a message from another process to decide whether that process has failed.
 
+	private Socket coordinatorSocket;
 	private PrintWriter coordinatorOut; // send messages to coordinator
 	private BufferedReader coordinatorIn; // receive messages from coordinator
 
@@ -24,10 +25,12 @@ public class Participant extends Thread
 	private final Map<Integer, String> votes = new HashMap<>(); // map of participants to votes
 	private Map<Integer, String> newVotes = new HashMap<>(); // map of the votes that we're received last round
 	private String winningVote;
+
 	private HashMap<ParticipantListener, Socket> participantReadSockets = new HashMap<>(); // map of the ParticipantListeners to the sockets they are using
 	private HashMap<ParticipantWriter, Socket> participantWriteSockets = new HashMap<>(); // map of the ParticipantWriters to the sockets they are using
 
 	private ServerSocket serverSocket; // the socket that this participant is listening on
+
 	private int maxRounds = 2; // the maximum number of rounds to run
 	private int round = 1; // the round this participant is currently on
 
@@ -57,10 +60,10 @@ public class Participant extends Thread
 		{
 			try
 			{
-				Socket socket = new Socket("localhost", coordinatorPort);
-				socket.setSoLinger(true, 0);
-				coordinatorOut = new PrintWriter(socket.getOutputStream(), true);
-				coordinatorIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+				coordinatorSocket = new Socket("localhost", coordinatorPort);
+				coordinatorSocket.setSoLinger(true, 0);
+				coordinatorOut = new PrintWriter(coordinatorSocket.getOutputStream(), true);
+				coordinatorIn = new BufferedReader(new InputStreamReader(coordinatorSocket.getInputStream()));
 				System.out.println(participantPort + " > Initialised Participant, listening on " + participantPort);
 				break;
 			}
@@ -207,14 +210,25 @@ public class Participant extends Thread
 	{
 		// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
 		//    where outcome is the decided winning vote and the list is all the participants who took part
-		//
-		//
-		//
-		//
-		//
-		//
-		//
-		//
+
+		StringBuilder message = new StringBuilder("VOTE " + winningVote + " " + coordinatorPort + " ");
+		for(int participant: participants)
+		{
+			message.append(participant + " ");
+		}
+		coordinatorOut.println(message);
+		System.out.println(participantPort + " > Outcome: " + message.toString() + " sent to coordinator");
+
+		try // close everything
+		{
+			coordinatorIn.close();
+			coordinatorOut.close();
+			coordinatorSocket.close();
+		}
+		catch(IOException e)
+		{
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -293,6 +307,7 @@ public class Participant extends Thread
 				}
 				thread.start();
 			}
+			serverSocket.close();
 			System.out.println(participantPort + " > All participants have connected to " + participantPort);
 		}
 		catch(IOException e)
@@ -350,7 +365,7 @@ public class Participant extends Thread
 					{
 						System.out.println(participantPort + " > Finished sending to: " + socket.getPort());
 						socket.close();
-						coordinatorIn.close();
+						out.close();
 						break;
 					}
 				}
@@ -508,18 +523,7 @@ public class Participant extends Thread
 			participant.listenForDetails();
 			participant.listenForVoteOptions();
 			participant.executeRounds();
-
-
-
-
-
-
 			participant.decideOutcome();
-
-
-
-
-
 			participant.informCoordinator();
 		}
 		catch(Coordinator.ArgumentQuantityException | IOException | WrongMessageException | InterruptedException e)
