@@ -13,19 +13,20 @@ public class Participant extends Thread
 	private final int participantPort; // this participant is listening on
 	private final int timeout; // timeout in milliseconds <- used when waiting for a message from another process to decide whether that process has failed.
 
-	private PrintWriter out; // send messages to coordinator
-	private BufferedReader in; // receive messages from coordinator
+	private PrintWriter coordinatorOut; // send messages to coordinator
+	private BufferedReader coordinatorIn; // receive messages from coordinator
 
 	private List<Integer> participants = new ArrayList<>(); // list of other participants
 	private List<String> options = new ArrayList<>(); // list of vote options
 
 	private String vote; // vote of this participant
 	private final Map<Integer, String> votes = new HashMap<>(); // map of participants to votes
+	private Map<Integer, String> newVotes = new HashMap<>(); // map of the votes that we're received last round
 	private HashMap<ParticipantListener, Socket> participantReadSockets = new HashMap<>(); // map of the ParticipantListeners to the sockets they are using
 	private HashMap<ParticipantWriter, Socket> participantWriteSockets = new HashMap<>(); // map of the ParticipantWriters to the sockets they are using
 
-	private ServerSocket serverSocket;
-	private final int maxRounds = 1; // the maximum number of rounds to run
+	private ServerSocket serverSocket; // the socket that this participant is listening on
+	private int maxRounds = 2; // the maximum number of rounds to run
 	private int round = 1; // the round this participant is currently on
 
 	private Participant(String[] args) throws Coordinator.ArgumentQuantityException
@@ -54,8 +55,8 @@ public class Participant extends Thread
 		{
 			Socket socket = new Socket("localhost", coordinatorPort);
 			socket.setSoLinger(true, 0);
-			out = new PrintWriter(socket.getOutputStream(), true);
-			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			coordinatorOut = new PrintWriter(socket.getOutputStream(), true);
+			coordinatorIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			System.out.println(participantPort + " > Initialised Participant, listening on " + participantPort);
 		}
 		catch(IOException e)
@@ -70,7 +71,7 @@ public class Participant extends Thread
 	private void registerWithCoordinator()
 	{
 		// 1. REGISTER WITH COORDINATOR by sending message "JOIN participantPort" to coordinatorPort
-		out.println("JOIN " + participantPort);
+		coordinatorOut.println("JOIN " + participantPort);
 	}
 
 	/**
@@ -83,19 +84,22 @@ public class Participant extends Thread
 		//    add all of the participants to the database
 		while (true)
 		{
-			String[] input = in.readLine().split(" ");
+			String[] input = coordinatorIn.readLine().split(" ");
+			System.out.println(participantPort + " > Adding details of length: " + input.length);
 			if(input[0].equals("DETAILS"))
 			{
 				for(int i = 1; i < input.length; i++)
 				{
+					System.out.println(participantPort + " > Adding detail: " + input[i]);
 					participants.add(Integer.parseInt(input[i]));
 				}
+				maxRounds = participants.size();
 				System.out.println(participantPort + " > Participants: " + participants.toString());
 				break;
 			}
 			else
 			{
-				throw new WrongMessageException("VOTE_OPTIONS", input[0]);
+				throw new WrongMessageException("DETAILS", input[0]);
 			}
 		}
 	}
@@ -110,7 +114,7 @@ public class Participant extends Thread
 		//	  then decide own vote from options (randomly)
 		while (true)
 		{
-			String[] input = in.readLine().split(" ");
+			String[] input = coordinatorIn.readLine().split(" ");
 			if(input[0].equals("VOTE_OPTIONS"))
 			{
 				for(int i = 1; i < input.length; i++)
@@ -161,7 +165,13 @@ public class Participant extends Thread
 	/**
 	 * Waits for all other participants to open a connection and assigns a ParticipantListener to them
 	 */
-	public void waitForParticipants() //----------------------------------------------------------------------------------------- IMPLEMENT THE TIMEOUT
+	public void listenForParticipants() //----------------------------------------------------------------------------------------- IMPLEMENT THE TIMEOUT
+	{
+		this.start();
+	}
+
+	@Override
+	public void run()
 	{
 		try
 		{
@@ -209,8 +219,55 @@ public class Participant extends Thread
 			this.out = new PrintWriter(socket.getOutputStream(), true);
 		}
 
-		// Run method which has a loop checking round
-		// Method for sending a message
+		@Override
+		public void run()
+		{
+			while (true)
+			{
+				try
+				{
+					if(thisRound == round && round == 1) // the first round
+					{
+						sendMessage("VOTE " + participantPort + " " + vote);
+						System.out.println(participantPort + " > Vote sent to: " + socket.getPort());
+						thisRound += 1;
+					}
+					else if(thisRound == round && round <= maxRounds) // successive rounds
+					{
+						// procedure for successive rounds
+						StringBuilder message = new StringBuilder("VOTE ");
+						for(int participant: newVotes.keySet())
+						{
+							message.append(participant + " " + newVotes.get(participant + " "));
+						}
+						sendMessage(message.toString());
+						System.out.println(participantPort + " > Message: " + message.toString() + " sent to: " + socket.getPort());
+						round += 1;
+					}
+					else if(round == maxRounds) // all rounds are complete
+					{
+						System.out.println(participantPort + " > Finished sending to: " + socket.getPort());
+						socket.close();
+						coordinatorIn.close();
+						break;
+					}
+				}
+				catch(IOException e)
+				{
+					e.printStackTrace();
+					break;
+				}
+			}
+		}
+
+		/**
+		 * Sends a message to the participant
+		 * @param message The message to be sent
+		 */
+		public void sendMessage(String message)
+		{
+			out.println(message);
+		}
 	}
 
 	private class ParticipantListener extends Thread
@@ -255,8 +312,12 @@ public class Participant extends Thread
 							{
 								votes.put(thisPort, thisVote);
 							}
+							synchronized(newVotes)
+							{
+								newVotes.put(thisPort, thisVote);
+							}
 							System.out.println(participantPort + " > Received vote: " + thisVote + " from: " + thisPort);
-							round += 1;
+							thisRound += 1;
 						}
 						else
 						{
@@ -265,12 +326,25 @@ public class Participant extends Thread
 					}
 					else if(thisRound == round && round <= maxRounds) // successive rounds
 					{
-						// procedure for successive rounds
-						round += 1;
+						input = in.readLine().split(" ");
+						if(input[0].equals("VOTE"))
+						{
+							thisVote = input[2];
+							synchronized(votes)
+							{
+								votes.put(thisPort, thisVote);
+							}
+							System.out.println(participantPort + " > Received vote: " + thisVote + " from: " + thisPort);
+							thisRound += 1;
+						}
+						else
+						{
+							throw new WrongMessageException("VOTE", input[0]);
+						}
 					}
-					else // all rounds are complete
+					else if(round == maxRounds) // all rounds are complete
 					{
-						System.out.println(participantPort + " > Finished listening from : " + vote);
+						System.out.println(participantPort + " > Finished listening from: " + socket.getPort());
 						socket.close();
 						in.close();
 						break;
@@ -327,8 +401,38 @@ public class Participant extends Thread
 			//    second onwards <- add any new info received before starting the round to the records
 			//                      send out this new info to each of the participants
 			//                      if the records are complete then continue to next step, otherwise start new round
+			participant.listenForParticipants(); // Allow all other participants to connect to this one
 			participant.connectToParticipants(); // Attempt to establish a connection to all other participants
-			participant.waitForParticipants(); // Allow all other participants to connect to this one
+
+			try
+			{
+				Thread.sleep(participant.timeout);
+			}
+			catch(InterruptedException e)
+			{
+				e.printStackTrace();
+			}
+
+			while(participant.round <= participant.maxRounds)
+			{
+				System.out.println(participant.participantPort + " > Running round: " + participant.round);
+				participant.newVotes = new HashMap<>();
+				try
+				{
+					Thread.sleep(participant.timeout);
+				}
+				catch(InterruptedException e)
+				{
+					e.printStackTrace();
+				}
+				participant.round += 1;
+			}
+
+
+			System.out.println(participant.participantPort + " > Votes collected:");
+			participant.votes.forEach((key, value) -> System.out.println(key + " -> " + value));
+
+
 
 			// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
 			// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"

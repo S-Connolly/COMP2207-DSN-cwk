@@ -82,7 +82,7 @@ public class Coordinator extends Thread
 		if(participants.size() < parts)
 		{
 			participants.add(port);
-			if(participants.size() == parts) // If there is now the required number of participants
+			if(participants.size() >= parts) // If there is now the required number of participants
 			{
 				// 2. SEND PARTICIPANT DETAILS to each participant <- message: "DETAILS [port]"
 				sendDetails();
