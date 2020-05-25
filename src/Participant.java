@@ -172,7 +172,28 @@ public class Participant extends Thread
 	private void decideOutcome()
 	{
 		// 5. DECIDE ON OUTCOME using majority <- draw = first option according to ascendant lexicographic order of tied options
+		//
+		//
+		//
+		//
+		//
+		//
+		//
+		//
+	}
 
+	private void informCoordinator()
+	{
+		// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
+		//    where outcome is the decided winning vote and the list is all the participants who took part
+		//
+		//
+		//
+		//
+		//
+		//
+		//
+		//
 	}
 
 	/**
@@ -474,8 +495,11 @@ public class Participant extends Thread
 
 			participant.decideOutcome();
 
-			// 6. INFORM COORDINATOR of outcome on coordinatorPort <- "OUTCOME outcome [port]"
-			//    where outcome is the decided winning vote and the list is all the participants who took part
+
+
+
+
+			participant.informCoordinator();
 		}
 		catch(Coordinator.ArgumentQuantityException | IOException | WrongMessageException | InterruptedException e)
 		{
