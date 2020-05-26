@@ -181,43 +181,47 @@ public class Participant extends Thread
 		connectToParticipants(); // Attempt to establish a connection to all other participants and complete the first round
 		Thread.sleep(timeout);
 		round += 1;
-		logger.beginRound(round);
-		boolean finished = false;
-		while(!finished) // keep checking if any of the listeners or writers are still in the first round and wait for them
-		{
-			finished = true;
-			for(ParticipantWriter thread : participantWriteSockets.keySet())
-			{
-				if(thread.thisRound == round)
-				{
-					finished = false;
-				}
-			}
-			for(ParticipantListener thread : participantReadSockets.keySet())
-			{
-				if(thread.thisRound == round)
-				{
-					finished = false;
-				}
-			}
-			Thread.sleep(timeout);
-		}
-		logger.endRound(round);
-		//round += 1;
+
 		while(round <= maxRounds)
 		{
-			Thread.sleep(timeout);
-			synchronized(newVotes)
+			logger.beginRound(round);
+			System.out.println(participantPort + " > Round start : " + round);
+
+			for(ParticipantListener thread: participantReadSockets.keySet())
 			{
-				newVotes = new HashMap<>();
+				thread.readyUp();
 			}
 
-			logger.beginRound(round + 1);
-			System.out.println(participantPort + " > Running round: " + round);
-
+			boolean finished = false;
+			while(!finished) // keep checking if any of the listeners or writers are still in the first round and wait for them
+			{
+				finished = true;
+				for(ParticipantWriter thread : participantWriteSockets.keySet())
+				{
+					if(thread.thisRound == round)
+					{
+						finished = false;
+					}
+				}
+				for(ParticipantListener thread : participantReadSockets.keySet())
+				{
+					if(!thread.isDone())
+					{
+						thread.readyUp();//finished = false;
+					}
+				}
+				Thread.sleep(timeout);
+			}
 
 			Thread.sleep(timeout);
-			logger.endRound(round + 1);
+
+			synchronized(newVotes)
+			{
+				votes.putAll(newVotes);
+				newVotes.clear();
+			}
+			logger.endRound(round);
+			System.out.println(participantPort + " > Round complete: " + round);
 			round += 1;
 		}
 
@@ -396,20 +400,26 @@ public class Participant extends Thread
 					}
 					else if(thisRound == round && round <= maxRounds) // successive rounds
 					{
-						// procedure for successive rounds
-						List<Vote> messageVotes = new ArrayList<>();
-						StringBuilder message = new StringBuilder("VOTE ");
-						for(int participant: newVotes.keySet())
+						synchronized(newVotes)
 						{
-							messageVotes.add(new Vote(participant, newVotes.get(participant)));
-							message.append(participant + " " + newVotes.get(participant));
+							if(newVotes.size() > 0) // if there is new information
+							{
+								List<Vote> messageVotes = new ArrayList<>();
+								StringBuilder message = new StringBuilder("VOTE ");
+								for(int participant : newVotes.keySet())
+								{
+									messageVotes.add(new Vote(participant, newVotes.get(participant)));
+									message.append(participant + " " + newVotes.get(participant));
+								}
+								sendMessage(message.toString());
+								logger.votesSent(socket.getPort(), messageVotes);
+								System.out.println(participantPort + " > Message: " + message.toString() + " sent to: " + socket.getPort());
+
+							}
 						}
-						sendMessage(message.toString());
-						logger.votesSent(socket.getPort(), messageVotes);
-						System.out.println(participantPort + " > Message: " + message.toString() + " sent to: " + socket.getPort());
 						thisRound += 1;
 					}
-					else if(thisRound == round && round > maxRounds) // all rounds are complete
+					else if(round > maxRounds) // all rounds are complete
 					{
 						System.out.println(participantPort + " > Finished sending to: " + socket.getPort());
 						socket.close();
@@ -447,7 +457,8 @@ public class Participant extends Thread
 		private int thisPort; // the port of the participant this thread is handling
 		private String thisVote; // the vote chosen by the participant this thread is handling
 
-		private int thisRound;
+		private boolean done;
+
 
 		/**
 		 * Handles incoming messages from other participants
@@ -456,7 +467,7 @@ public class Participant extends Thread
 		 */
 		public ParticipantListener(Socket socket) throws IOException
 		{
-			this.thisRound = 1;
+			this.done = false;
 			this.socket = socket;
 			socket.setSoLinger(true, 0);
 			this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -465,74 +476,79 @@ public class Participant extends Thread
 		@Override
 		public void run()
 		{
+			String line;
 			String[] input;
 			while (true)
 			{
+				System.out.println(participantPort + " > " + done + " : " + round);
+
 				try
 				{
-					if(thisRound == round && round == 1) // the first round
+					if(!done && round == 1) // the first round
 					{
-						input = in.readLine().split(" ");
-						if(input[0].equals("VOTE"))
-						{
-							thisPort = Integer.parseInt(input[1]);
-							thisVote = input[2];
-							synchronized(votes)
-							{
-								votes.put(thisPort, thisVote);
-							}
-							synchronized(newVotes)
-							{
-								newVotes.put(thisPort, thisVote);
-							}
-							List<Vote> messageVotes = new ArrayList<>();
-							messageVotes.add(new Vote(thisPort, thisVote));
-							logger.votesReceived(thisPort, messageVotes);
-							System.out.println(participantPort + " > Received vote: " + thisVote + " from: " + thisPort);
-							thisRound += 1;
-						}
-						else
-						{
-							throw new WrongMessageException("VOTE", input[0]);
-						}
-					}
-					else if(thisRound == round && round <= maxRounds) // successive rounds
-					{
-						input = in.readLine().split(" ");
-						if(input[0].equals("VOTE"))
-						{
-							List<Vote> messageVotes = new ArrayList<>();
+						line = in.readLine();
 
-							for(int i = 1; i < input.length; i++)
+						if(line != null)
+						{
+							input = line.split(" ");
+							if(input[0].equals("VOTE"))
 							{
-								synchronized(votes)
-								{
-									if(!votes.containsKey(input[i]))
-									{
-										votes.put(Integer.parseInt(input[i]), input[i + 1]);
-									}
-								}
+								thisPort = Integer.parseInt(input[1]);
+								thisVote = input[2];
 								synchronized(newVotes)
 								{
-									if(!newVotes.containsKey(input[i]))
-									{
-										newVotes.put(Integer.parseInt(input[i]), input[i + 1]);
-									}
+									newVotes.put(thisPort, thisVote);
 								}
-								messageVotes.add(new Vote(Integer.parseInt(input[i]), input[i + 1]));
-								System.out.println(participantPort + " > Received vote: " + input[i] + " -> " + input[i + 1] + thisPort);
-								i += 2;
+								List<Vote> messageVotes = new ArrayList<>();
+								messageVotes.add(new Vote(thisPort, thisVote));
+								logger.votesReceived(thisPort, messageVotes);
+								System.out.println(participantPort + " > Received vote: " + thisVote + " from: " + thisPort);
+								done = true;
 							}
-
-							logger.votesReceived(thisPort, messageVotes);
-							thisRound += 1;
-						}
-						else
-						{
-							throw new WrongMessageException("VOTE", input[0]);
+							else
+							{
+								throw new WrongMessageException("VOTE", input[0]);
+							}
 						}
 					}
-					else if(thisRound == round && round > maxRounds) // all rounds are complete
+					else if(!done && round <= maxRounds) // successive rounds
+					{
+						line = in.readLine();
+
+						if(line != null)
+						{
+							input = line.split(" ");
+
+							if(input[0].equals("VOTE"))
+							{
+								List<Vote> messageVotes = new ArrayList<>();
+
+								for(int i = 1; i < input.length; i++)
+								{
+									synchronized(newVotes)
+									{
+										if(!newVotes.containsKey(Integer.parseInt(input[i])))
+										{
+											newVotes.put(Integer.parseInt(input[i]), input[i + 1]);
+										}
+									}
+									messageVotes.add(new Vote(Integer.parseInt(input[i]), input[i + 1]));
+									System.out.println(participantPort + " > Received vote: " + input[i] + " -> " + input[i + 1] + thisPort);
+									i += 2;
+								}
+
+								logger.votesReceived(thisPort, messageVotes);
+
+							}
+							else
+							{
+								throw new WrongMessageException("VOTE", input[0]);
+							}
+						}
+						done = true;
+
+					}
+					else if(round > maxRounds) // all rounds are complete
 					{
 						System.out.println(participantPort + " > Finished listening from: " + socket.getPort());
 						socket.close();
@@ -550,6 +566,16 @@ public class Participant extends Thread
 					break;
 				}
 			}
+		}
+
+		public boolean isDone()
+		{
+			return done;
+		}
+
+		public void readyUp()
+		{
+			done = false;
 		}
 	}
 
