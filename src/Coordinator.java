@@ -59,10 +59,10 @@ public class Coordinator extends Thread
 	 * Wait for the required number of participants to join
 	 * @throws IOException if there is a problem with the socket
 	 */
-	private void waitForParticipants() throws IOException //---------------------------------------------------------------- IMPLEMENT THE TIMEOUT
+	private void waitForParticipants() throws IOException
 	{
 		// Wait to connect with the number of participants specified in the args
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////logger.startedListening(coordinatorPort);
+		logger.startedListening(coordinatorPort);
 		Socket socket;
 		while(participantSockets.size() < parts)
 		{

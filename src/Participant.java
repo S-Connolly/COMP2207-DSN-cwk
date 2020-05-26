@@ -308,6 +308,7 @@ public class Participant extends Thread
 			try
 			{
 				Socket socket = new Socket("localhost", participant);
+				logger.connectionEstablished(participant);
 				ParticipantWriter thread = new ParticipantWriter(socket);
 				synchronized(participantWriteSockets)
 				{
@@ -337,11 +338,12 @@ public class Participant extends Thread
 		try
 		{
 			serverSocket = new ServerSocket(participantPort);
+			logger.startedListening();
 			Socket socket;
 			while(participantReadSockets.size() < participants.size())
 			{
 				socket = serverSocket.accept();
-				logger.connectionEstablished(socket.getPort());
+				logger.connectionAccepted(socket.getPort());
 				socket.setSoLinger(true, 0);
 				System.out.println(participantPort + " > A participant has connected to " + participantPort);
 
@@ -480,8 +482,6 @@ public class Participant extends Thread
 			String[] input;
 			while (true)
 			{
-				System.out.println(participantPort + " > " + done + " : " + round);
-
 				try
 				{
 					if(!done && round == 1) // the first round
