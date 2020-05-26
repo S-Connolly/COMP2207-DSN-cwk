@@ -17,6 +17,8 @@ public class Coordinator extends Thread
 	private final int timeout; // timeout in milliseconds <- used when waiting for a message from a participant to decide whether that participant has failed.
 	private final String[] options; // set (no duplicates) of options
 
+	private CoordinatorLogger logger;
+
 	private ServerSocket serverSocket; // the socket of this coordinator
 
 	private HashMap<ParticipantHandler, Socket> participantSockets = new HashMap<>(); // map of the threads handling participants to the sockets they are using
@@ -39,9 +41,11 @@ public class Coordinator extends Thread
 		this.options = Arrays.copyOfRange(args, 4, args.length);
 		System.out.println("Running with C: " + this.coordinatorPort + ", L: " + this.loggerPort + ", P: " + this.parts + ", T: "
 				           + this.timeout + ", O: " + Arrays.toString(this.options));
-
 		try
 		{
+			CoordinatorLogger.initLogger(loggerPort, coordinatorPort, timeout);
+			logger = CoordinatorLogger.getLogger();
+
 			serverSocket = new ServerSocket(coordinatorPort);
 			System.out.println("Coordinator > Initialised and listening on port " + coordinatorPort + ", waiting for " + parts + " participants, options: " + Arrays.toString(options));
 		}
@@ -58,10 +62,12 @@ public class Coordinator extends Thread
 	private void waitForParticipants() throws IOException //---------------------------------------------------------------- IMPLEMENT THE TIMEOUT
 	{
 		// Wait to connect with the number of participants specified in the args
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////logger.startedListening(coordinatorPort);
 		Socket socket;
 		while(participantSockets.size() < parts)
 		{
 			socket = serverSocket.accept();
+			logger.connectionAccepted(socket.getPort());
 			socket.setSoLinger(true, 0);
 			System.out.println("Coordinator > A participant has connected to the coordinator");
 
@@ -122,24 +128,18 @@ public class Coordinator extends Thread
 	{
 		// Create message of all options
 		StringBuilder message = new StringBuilder("VOTE_OPTIONS ");
+		List<String> votingOptions = new ArrayList<>();
 		for (String option : options)
 		{
 			message.append(option + " ");
+			votingOptions.add(option);
 		}
-		sendToAll(message.toString());
-	}
-
-	/**
-	 * Send a message to each of the participants
-	 * @param message The message to be sent
-	 */
-	private void sendToAll(String message)
-	{
 		synchronized(participantSockets)
 		{
 			for(ParticipantHandler thread : participantSockets.keySet())
 			{
-				thread.sendMessage(message);
+				thread.sendMessage(message.toString());
+				logger.voteOptionsSent(thread.thisPort, votingOptions);
 			}
 		}
 	}
@@ -180,10 +180,12 @@ public class Coordinator extends Thread
 					if(input[0].equals("JOIN"))
 					{
 						thisPort = Integer.parseInt(input[1]);
+						logger.joinReceived(thisPort);
 						addParticipant(thisPort);
 					}
 					else if(input[0].equals("OUTCOME"))
 					{
+						logger.outcomeReceived(thisPort, input[1]);
 						if(!(outcome == null))
 						{
 							outcome = input[1];
@@ -221,15 +223,18 @@ public class Coordinator extends Thread
 		public void sendDetails()
 		{
 			StringBuilder message = new StringBuilder("DETAILS ");
+			List<Integer> details = new ArrayList<>();
 			for(Integer participant : participants)
 			{
 				if(participant != thisPort)
 				{
 					message.append(participant + " ");
+					details.add(participant);
 				}
 			}
 
 			out.println(message);
+			logger.detailsSent(thisPort, details);
 		}
 	}
 
